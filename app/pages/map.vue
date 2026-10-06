@@ -1,6 +1,9 @@
 <script setup lang="ts">
-import { onMounted, ref, onBeforeUnmount, watch } from 'vue'
+import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import 'leaflet/dist/leaflet.css'
+import { useGeoStore } from '../../stores/geo'
+
+const geoStore = useGeoStore()
 
 const mapElement = ref<HTMLDivElement | null>(null)
 
@@ -10,137 +13,267 @@ const radius = ref(500)
 
 let map: any = null
 let marker: any = null
-let geofonceCircle: any = null
+let geofenceCircle: any = null
 let L: any = null
 
-const resetLocation = () => {
-    const position: [number, number] = [-6.9147, 107.6098]
+// Memindahkan marker dan geofence
+function updateLocation(
+  lat: number,
+  lon: number,
+  zoom = 16
+) {
+  const position: [number, number] = [lat, lon]
 
-    latitude.value = position[0]
-    longitude.value = position[1]
-    radius.value = 500
-
-    if (marker) {
-        marker.setLatLng(position)
-    }
-
-    if (geofonceCircle) {
-        geofonceCircle.setLatLng(position)
-        geofonceCircle.setRadius(500)
-    }
-
-    if (map) {
-        map.setView(position, 15)
-    }
-}
-
-onMounted(async () => {
-    if (!mapElement.value) return
-
-    
-    const leafletModule = await import('leaflet')
-    L = leafletModule.default
-
-   map = L.map(mapElement.value).setView(
-    [latitude.value, longitude.value],
-    15)
-
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-        maxZoom: 19
-    }).addTo(map)
-
-    marker = L.marker([latitude.value, longitude.value]).addTo(map)
-
-    marker.bindPopup('Lokasi Anda').openPopup()
-
-    geofonceCircle = L.circle([latitude.value, longitude.value], {
-        color: 'blue',
-        fillColor: '#blue',
-        fillOpacity: 0.2,
-        radius: radius.value
-    }).addTo(map)
-
-     // Klik peta untuk memindahkan marker dan pusat geofence
-  map.on('click', (event: any) => {
-    latitude.value = event.latlng.lat
-    longitude.value = event.latlng.lng
-
-    const position = event.latlng
-
-    marker.setLatLng(position)
-    geofonceCircle.setLatLng(position)
-
-    marker
-      .bindPopup('Pusat Geofence')
-      .openPopup() 
-    })
-
-    setTimeout(() => {
-        map.invalidateSize()
-    }, 100)
-
-    watch(radius, (newRadius) => {
-        if (geofonceCircle && newRadius > 0) {
-            geofonceCircle.setRadius(newRadius)
-        }
-    })
-
-   function resetLocation() {
-  const position: [number, number] = [-6.9147, 107.6098]
-
-  latitude.value = position[0]
-  longitude.value = position[1]
-  radius.value = 500
+  latitude.value = lat
+  longitude.value = lon
 
   if (marker) {
     marker.setLatLng(position)
   }
 
-  if (geofonceCircle) {
-    geofonceCircle.setLatLng(position)
-    geofonceCircle.setRadius(500)
+  if (geofenceCircle) {
+    geofenceCircle.setLatLng(position)
   }
 
   if (map) {
-    map.setView(position, 15)
+    map.setView(position, zoom)
   }
 }
 
-    onBeforeUnmount(() => {
-        if (map) {
-            map.remove()
-        }
-    })
+// Ketika user memilih hasil Geo Search
+function selectLocation(result: any) {
+  const lat = Number(result.lat)
+  const lon = Number(result.lon)
 
-    
+  updateLocation(lat, lon)
 
+  if (marker) {
+    marker
+      .bindPopup(result.display_name)
+      .openPopup()
+  }
+}
+
+// Reset ke lokasi awal
+function resetLocation() {
+  const lat = -6.9147
+  const lon = 107.6098
+
+  radius.value = 500
+
+  updateLocation(lat, lon, 15)
+
+  if (marker) {
+    marker
+      .bindPopup('Lokasi Awal')
+      .openPopup()
+  }
+}
+
+// Inisialisasi Leaflet
+onMounted(async () => {
+  if (!mapElement.value) return
+
+  const leafletModule = await import('leaflet')
+  L = leafletModule.default
+
+  // Membuat map
+  map = L.map(mapElement.value).setView(
+    [latitude.value, longitude.value],
+    15
+  )
+
+  // OpenStreetMap sebagai peta dasar
+  L.tileLayer(
+    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    {
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 19
+    }
+  ).addTo(map)
+
+  // Marker
+  marker = L.marker([
+    latitude.value,
+    longitude.value
+  ]).addTo(map)
+
+  marker
+    .bindPopup('Lokasi Awal')
+    .openPopup()
+
+  // Geofence
+  geofenceCircle = L.circle(
+    [latitude.value, longitude.value],
+    {
+      color: 'blue',
+      fillColor: 'blue',
+      fillOpacity: 0.2,
+      radius: radius.value
+    }
+  ).addTo(map)
+
+  // Klik map
+  map.on('click', (event: any) => {
+    const lat = event.latlng.lat
+    const lon = event.latlng.lng
+
+    updateLocation(lat, lon)
+
+    if (marker) {
+      marker
+        .bindPopup('Pusat Geofence')
+        .openPopup()
+    }
+  })
+
+  // Memastikan ukuran map benar
+  setTimeout(() => {
+    map?.invalidateSize()
+  }, 100)
 })
 
+// Mengubah ukuran geofence ketika slider berubah
+watch(radius, (newRadius) => {
+  if (geofenceCircle && newRadius > 0) {
+    geofenceCircle.setRadius(newRadius)
+  }
+})
+
+// Membersihkan map ketika pindah halaman
+onBeforeUnmount(() => {
+  if (map) {
+    map.remove()
+    map = null
+  }
+})
 </script>
 
 <template>
   <main class="min-h-screen bg-gray-100 px-4 py-8">
     <div class="mx-auto max-w-5xl">
+
+      <!-- Header -->
       <header class="mb-6">
         <h1 class="text-3xl font-bold text-gray-800">
           Leaflet Map
         </h1>
+
         <p class="mt-2 text-gray-600">
-          Interactive map with marker and geofence.
+          Interactive map with Geo Search, marker, and geofence.
         </p>
       </header>
 
+
+    
+     
+
       <section class="mb-5 rounded-xl bg-white p-5 shadow">
+
+        <h2 class="mb-3 text-lg font-bold text-gray-800">
+          Search Location
+        </h2>
+
+        <div class="flex gap-2">
+
+          <input
+            v-model="geoStore.query"
+            type="text"
+            placeholder="Contoh: TransTRACK Bandung"
+            class="flex-1 rounded-lg border border-gray-300 px-4 py-2 outline-none focus:border-blue-500"
+            @keyup.enter="geoStore.searchLocation"
+          />
+
+          <button
+            type="button"
+            :disabled="geoStore.loading"
+            @click="geoStore.searchLocation"
+            class="rounded-lg bg-blue-600 px-5 py-2 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {{ geoStore.loading ? 'Searching...' : 'Search' }}
+          </button>
+
+        </div>
+
+
+        <!-- Loading -->
+
+        <p
+          v-if="geoStore.loading"
+          class="mt-3 text-sm text-gray-500"
+        >
+          Mencari lokasi...
+        </p>
+
+
+        <!-- Error -->
+
+        <p
+          v-if="geoStore.error"
+          class="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-600"
+        >
+          {{ geoStore.error }}
+        </p>
+
+
+        <!-- Search Results -->
+
+        <div
+          v-if="geoStore.results.length"
+          class="mt-4 space-y-2"
+        >
+
+          <p class="mb-2 text-sm font-medium text-gray-700">
+            Hasil pencarian:
+          </p>
+
+          <button
+            v-for="result in geoStore.results"
+            :key="`${result.lat}-${result.lon}`"
+            type="button"
+            @click="selectLocation(result)"
+            class="block w-full rounded-lg border border-gray-200 p-3 text-left transition hover:border-blue-400 hover:bg-blue-50"
+          >
+
+            <p class="font-medium text-gray-800">
+              {{ result.displayName }}
+            </p>
+
+            <p class="mt-1 text-xs text-gray-500">
+              Latitude: {{ result.lat }}
+              <br>
+              Longitude: {{ result.lon }}
+            </p>
+
+          </button>
+
+        </div>
+
+      </section>
+
+
+      
+
+      <section class="mb-5 rounded-xl bg-white p-5 shadow">
+
         <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <label for="radius" class="font-semibold text-gray-800">
+
+          <label
+            for="radius"
+            class="font-semibold text-gray-800"
+          >
             Geofence Radius
           </label>
 
-          <span class="rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-700">
+          <span
+            class="rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-700"
+          >
             {{ radius }} meter
           </span>
+
         </div>
+
 
         <input
           id="radius"
@@ -152,62 +285,116 @@ onMounted(async () => {
           class="w-full cursor-pointer accent-blue-600"
         />
 
+
         <div class="mt-1 flex justify-between text-xs text-gray-500">
-          <span>100 m</span>
-          <span>2.000 m</span>
+
+          <span>
+            100 m
+          </span>
+
+          <span>
+            2.000 m
+          </span>
+
         </div>
+
       </section>
 
-      <section class="overflow-hidden rounded-xl bg-white shadow">
+
+
+      
+      
+
+      <section
+        class="overflow-hidden rounded-xl bg-white shadow"
+      >
+
         <div
           ref="mapElement"
           class="h-[450px] w-full"
         ></div>
+
       </section>
 
+
+    
+
       <section class="mt-5 rounded-xl bg-white p-5 shadow">
+
         <div class="mb-4 flex items-center justify-between gap-3">
+
           <h2 class="text-lg font-bold text-gray-800">
             Location Details
           </h2>
 
-            <button
+          <button
             type="button"
             @click="resetLocation"
-            class="rounded-lg bg-gray-800 px-4 py-2 text-sm text-white hover:bg-gray-700"
->
+            class="rounded-lg bg-gray-800 px-4 py-2 text-sm text-white transition hover:bg-gray-700"
+          >
             Reset
-            </button>
+          </button>
+
         </div>
+
 
         <div class="grid gap-4 sm:grid-cols-3">
+
+          <!-- Latitude -->
+
           <div class="rounded-lg bg-gray-50 p-4">
-            <p class="text-sm text-gray-500">Latitude</p>
-            <p class="mt-1 break-all font-semibold">
+
+            <p class="text-sm text-gray-500">
+              Latitude
+            </p>
+
+            <p class="mt-1 break-all font-semibold text-gray-800">
               {{ latitude.toFixed(6) }}
             </p>
+
           </div>
 
+
+          <!-- Longitude -->
+
           <div class="rounded-lg bg-gray-50 p-4">
-            <p class="text-sm text-gray-500">Longitude</p>
-            <p class="mt-1 break-all font-semibold">
+
+            <p class="text-sm text-gray-500">
+              Longitude
+            </p>
+
+            <p class="mt-1 break-all font-semibold text-gray-800">
               {{ longitude.toFixed(6) }}
             </p>
+
           </div>
 
+
+          <!-- Radius -->
+
           <div class="rounded-lg bg-gray-50 p-4">
-            <p class="text-sm text-gray-500">Radius</p>
-            <p class="mt-1 font-semibold">
+
+            <p class="text-sm text-gray-500">
+              Radius
+            </p>
+
+            <p class="mt-1 font-semibold text-gray-800">
               {{ radius }} meter
             </p>
+
           </div>
+
         </div>
+
 
         <p class="mt-4 text-sm text-gray-500">
           Klik lokasi lain pada peta untuk memindahkan marker
-          dan pusat geofence. Geser slider untuk mengubah radius.
+          dan pusat geofence. Gunakan pencarian untuk menemukan
+          lokasi melalui Geo Search.
         </p>
+
       </section>
+
     </div>
   </main>
 </template>
