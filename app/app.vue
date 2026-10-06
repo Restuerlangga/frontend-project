@@ -14,6 +14,13 @@
       >
         GitHub Search
       </NuxtLink>
+
+      <NuxtLink
+        to="/map"
+        class="text-white hover:text-blue-300"
+      >
+        Map
+      </NuxtLink>
     </nav>
 
     <NuxtPage />

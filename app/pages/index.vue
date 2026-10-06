@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useTodoStore } from '../../stores/todo'
 
 const todoStore = useTodoStore()
