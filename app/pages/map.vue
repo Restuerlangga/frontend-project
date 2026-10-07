@@ -15,6 +15,8 @@ let map: any = null
 let marker: any = null
 let geofenceCircle: any = null
 let L: any = null
+let routeLayer: any = null
+let destinationMarker: any = null
 
 // Memindahkan marker dan geofence
 function updateLocation(
@@ -41,18 +43,104 @@ function updateLocation(
 }
 
 // Ketika user memilih hasil Geo Search
-function selectLocation(result: any) {
-  const lat = Number(result.lat)
-  const lon = Number(result.lon)
+async function selectLocation(result: any) {
+  const destinationLat = Number(result.lat)
+  const destinationLon = Number(result.lon)
 
-  updateLocation(lat, lon)
+  // Origin = posisi marker/geofence saat ini
+  const originLat = latitude.value
+  const originLon = longitude.value
 
-  if (marker) {
-    marker
+  console.log('Origin:', originLat, originLon)
+  console.log('Destination:', destinationLat, destinationLon)
+
+  // Hapus marker tujuan sebelumnya
+  if (destinationMarker) {
+    destinationMarker.remove()
+  }
+
+  // Buat marker tujuan
+  if (L && map) {
+    destinationMarker = L.marker([
+      destinationLat,
+      destinationLon
+    ])
+      .addTo(map)
       .bindPopup(result.display_name)
       .openPopup()
   }
+
+  // Ambil rute
+  await geoStore.getRoute(
+    originLat,
+    originLon,
+    destinationLat,
+    destinationLon
+  )
+
+  // Gambar rute
+  drawRoute()
 }
+
+function drawRoute() {
+  if (!map || !L || !geoStore.route) return
+
+  const route = geoStore.route
+
+  // Hapus route sebelumnya
+  if (routeLayer) {
+    map.removeLayer(routeLayer)
+    routeLayer = null
+  }
+
+  // OSRM: [longitude, latitude]
+  // Leaflet: [latitude, longitude]
+  const coordinates = route.geometry.coordinates.map(
+    (coord: [number, number]) => [
+      coord[1],
+      coord[0]
+    ]
+  )
+
+  // Buat SATU route saja
+  routeLayer = L.polyline(coordinates, {
+    color: 'blue',
+    weight: 5,
+    opacity: 0.8
+  }).addTo(map)
+
+  // Fokus ke route terbaru
+  map.fitBounds(routeLayer.getBounds(), {
+    padding: [50, 50]
+  })
+}
+function formatDistance(distance: number) {
+  if (distance >= 1000) {
+    return `${(distance / 1000).toFixed(2)} km`
+  }
+
+  return `${Math.round(distance)} m`
+}
+
+function formatDuration(duration: number) {
+  const minutes = Math.ceil(duration / 60)
+
+  if (minutes < 60) {
+    return `${minutes} menit`
+  }
+
+  const hours = Math.floor(minutes / 60)
+  const remainingMinutes = minutes % 60
+
+  if (remainingMinutes === 0) {
+    return `${hours} jam`
+  }
+
+  return `${hours} jam ${remainingMinutes} menit`
+}
+
+
+
 
 // Reset ke lokasi awal
 function resetLocation() {
@@ -62,6 +150,18 @@ function resetLocation() {
   radius.value = 500
 
   updateLocation(lat, lon, 15)
+
+  geoStore.route = null
+
+  if (routeLayer) {
+    routeLayer.remove()
+    routeLayer = null
+  }
+
+  if (destinationMarker) {
+    destinationMarker.remove()
+    destinationMarker = null
+  }
 
   if (marker) {
     marker
@@ -143,10 +243,17 @@ watch(radius, (newRadius) => {
 
 // Membersihkan map ketika pindah halaman
 onBeforeUnmount(() => {
+
+  if (routeLayer) {
+    routeLayer.remove()
+    routeLayer = null
+  }
+
   if (map) {
     map.remove()
     map = null
   }
+  
 })
 </script>
 
@@ -237,7 +344,7 @@ onBeforeUnmount(() => {
           >
 
             <p class="font-medium text-gray-800">
-              {{ result.displayName }}
+              {{ result.display_name }}
             </p>
 
             <p class="mt-1 text-xs text-gray-500">
@@ -315,6 +422,42 @@ onBeforeUnmount(() => {
         ></div>
 
       </section>
+
+      <!-- Route Information -->
+<section
+  v-if="geoStore.route"
+  class="mt-5 rounded-xl bg-white p-5 shadow"
+>
+  <h2 class="mb-4 text-lg font-bold text-gray-800">
+    Route Information
+  </h2>
+
+  <div class="grid gap-4 sm:grid-cols-2">
+
+    <!-- Distance -->
+    <div class="rounded-xl bg-blue-50 p-4">
+      <p class="text-sm text-gray-500">
+        Jarak
+      </p>
+
+      <p class="mt-1 text-2xl font-bold text-gray-800">
+        {{ formatDistance(geoStore.route.distance) }}
+      </p>
+    </div>
+
+    <!-- ETA -->
+    <div class="rounded-xl bg-green-50 p-4">
+      <p class="text-sm text-gray-500">
+        Estimasi Waktu
+      </p>
+
+      <p class="mt-1 text-2xl font-bold text-gray-800">
+        {{ formatDuration(geoStore.route.duration) }}
+      </p>
+    </div>
+
+  </div>
+</section>
 
 
     
